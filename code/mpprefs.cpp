@@ -570,9 +570,11 @@ void MPPrefs::saveSettings()
 		prefs.setNewName( txt );
 	}
 	
+	// getPlayerInfo() returns NULL while networking is unimplemented
 	MC2Player* pInfo = MPlayer->getPlayerInfo( MPlayer->commanderID );
 
-	strcpy( pInfo->name, txt );
+	if ( pInfo )
+		strcpy( pInfo->name, txt );
 
 	// check and see if name has changed
 	comboBox[1].EditBox().getEntry( txt );
@@ -582,7 +584,7 @@ void MPPrefs::saveSettings()
 		prefs.setNewUnit( txt );
 	}
 
-	if ( txt )
+	if ( txt && pInfo )
 		strcpy( pInfo->unitName, txt );
 
 
@@ -596,11 +598,13 @@ void MPPrefs::saveSettings()
 		{
 			const char* pName = pItem->getBmp();
 			strcpy( prefs.insigniaFile, pName );
-			strcpy( pInfo->insigniaFile, pName );
+			if ( pInfo )
+				strcpy( pInfo->insigniaFile, pName );
 		}
 	}
 
 //	if ( MPlayer->isHost() )
+	if ( pInfo )
 	{
 		prefs.baseColor =  MPlayer->colors[pInfo->baseColor[BASECOLOR_PREFERENCE]];
 		prefs.highlightColor = MPlayer->colors[pInfo->stripeColor];
@@ -617,10 +621,12 @@ void MPPrefs::saveSettings()
 void MPPrefs::cancelSettings()
 {
 	MC2Player* pInfo = MPlayer->getPlayerInfo( MPlayer->commanderID );
-	strcpy( pInfo->name, prefs.playerName[0] );
-
-	strcpy( pInfo->unitName, prefs.unitName[0] );
-	strcpy( pInfo->insigniaFile, prefs.insigniaFile );
+	if ( pInfo )
+	{
+		strcpy( pInfo->name, prefs.playerName[0] );
+		strcpy( pInfo->unitName, prefs.unitName[0] );
+		strcpy( pInfo->insigniaFile, prefs.insigniaFile );
+	}
 
 	MPlayer->sendPlayerUpdate( 0, 5, -1 );
 	prefs.save();

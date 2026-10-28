@@ -24,6 +24,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS "ON")
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_PREFIX_PATH}/cmake)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl2)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 # may have to help find_package bydetting path to FindSDL2.cmake
 #set(SDL2_DIR "${CMAKE_PREFIX_PATH}/cmake")
 
