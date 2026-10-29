@@ -229,13 +229,10 @@ long HeapManager::commitHeap (unsigned long commitSize)
 		return NO_ERR;
 #endif
 #else
-		// only correct for 64bit?
-        // currentEbp = esp;
-        asm("mov %%rsp, %0;"
-            : "=r"(currentEbp)
-            :
-            :
-        );
+		// GCC/Clang: works on x86_64 and aarch64 (the old inline
+		// "mov %rsp" was x86-only and read the wrong slot on 64-bit anyway)
+		whoMadeMe = (unsigned long)__builtin_return_address(0);
+		return NO_ERR;
 #endif
 		prevEbp = *((unsigned long *)currentEbp);
 		retAddr = *((unsigned long *)(currentEbp+4));

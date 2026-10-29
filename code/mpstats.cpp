@@ -521,7 +521,9 @@ void MPStatsResultsEntry::setData(const MC2Player* data, unsigned long laurelCol
 	}
 	else
 	{
-		TGAFileHeader*  pData = (TGAFileHeader*)MPlayer->insigniaList[data->commanderID];
+		// The networking stub keeps only a bool per player in insigniaList (no
+		// insignia bitmap); casting that bool to a pointer gave 0x1 when set.
+		TGAFileHeader*  pData = NULL;
 		if ( pData )
 		{
 			int size = pData->pixel_depth/8;
