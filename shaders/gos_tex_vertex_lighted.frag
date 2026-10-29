@@ -28,7 +28,7 @@ void main(void)
     c *= tex_color;
     
 #ifdef ALPHA_TEST
-    if(tex_color.a == 0)
+    if(tex_color.a == 0.0)
         discard;
 #endif
 
@@ -38,7 +38,7 @@ void main(void)
 #if ENABLE_VERTEX_LIGHTING
 	PREC vec3 lighting = VertexLight;
 #else
-    const int lights_index = int(light_offset_.x);
+    int lights_index = int(light_offset_.x);
     PREC vec3 lighting = calc_light(lights_index, Normal, VertexLight);
 #endif
 

@@ -58,9 +58,22 @@ find_package(SDL2 REQUIRED CONFIG REQUIRED COMPONENTS SDL2main)
 find_package(SDL2_mixer REQUIRED)
 #required by text_tool
 find_package(SDL2_ttf REQUIRED)
-find_package(GLEW REQUIRED)
-find_package(OpenGL REQUIRED)
 find_package(ZLIB REQUIRED)
+
+# MC2_GLES: render through OpenGL ES 3.1 (Raspberry Pi 4/400) instead of
+# desktop GL. GLES entry points come straight from libGLESv2, no GLEW.
+option(MC2_GLES "Use OpenGL ES 3.1 instead of desktop OpenGL" OFF)
+if(MC2_GLES)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GLESV2 REQUIRED IMPORTED_TARGET glesv2)
+    add_definitions(-DMC2_GLES)
+    set(MC2_GL_LIBS PkgConfig::GLESV2)
+    message("Rendering backend: OpenGL ES 3.1")
+else()
+    find_package(GLEW REQUIRED)
+    find_package(OpenGL REQUIRED)
+    set(MC2_GL_LIBS GLEW::GLEW OpenGL::GL)
+endif()
 
 message("Found SDL2 package ${SDL2_LIBRARIES}" )
 message("SDL2 prefix: ${SDL2_PREFIX}")
@@ -195,7 +208,7 @@ endif()
 
 
 add_executable(mc2 ${SOURCES} ${MAIN_SRC})
-target_link_libraries(mc2 mclib gosfx mlr stuff gui gameos gameos_main windows ZLIB::ZLIB ${SDL2_LIBRARIES} GLEW::GLEW SDL2_mixer::SDL2_mixer ${ADDITIONAL_LIBS} OpenGL::GL)
+target_link_libraries(mc2 mclib gosfx mlr stuff gui gameos gameos_main windows ZLIB::ZLIB ${SDL2_LIBRARIES} SDL2_mixer::SDL2_mixer ${ADDITIONAL_LIBS} ${MC2_GL_LIBS})
 
 add_subdirectory("./res" "./out/res")
 add_subdirectory("./data_tools" "./out/data_tools")

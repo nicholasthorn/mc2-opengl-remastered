@@ -18,7 +18,7 @@ void main(void)
     c *= tex_color;
     
 #ifdef ALPHA_TEST
-    if(tex_color.a == 0)
+    if(tex_color.a == 0.0)
         discard;
 #endif
 

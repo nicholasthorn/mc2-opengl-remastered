@@ -20,14 +20,14 @@ layout (binding = SCENE_DATA_ATTACHMENT_SLOT, std140) uniform SceneData
 
 float calc_fog_factor(in vec3 wpos, in vec3 cam_pos)
 {
-    const float fogStart = g_scene.fogStart;
-    const float fogFull = g_scene.fogFull;
+    float fogStart = g_scene.fogStart;
+    float fogFull = g_scene.fogFull;
 
     float eyeDistance = length(wpos - cam_pos.xyz);
     float haze_factor = 
         clamp((eyeDistance - g_scene.minHazeDistance) * g_scene.distanceFactor, 0.0, 1.0);
 
-    float distFog = 1 - haze_factor;
+    float distFog = 1.0 - haze_factor;
 
     float factor = clamp((fogStart - wpos.y)/(fogStart - fogFull), 0.0, 1.0);
     factor = 1.0 - factor * factor;

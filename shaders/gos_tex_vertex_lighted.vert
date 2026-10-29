@@ -40,7 +40,7 @@ out vec3 CameraPos;
 void main(void)
 {
     vec4 p = wvp_ * vec4(pos.xyz, 1);
-    float rhw = 1 / p.w;
+    float rhw = 1.0 / p.w;
 
     float debug_offset = 0.0;
     p.x = (p.x * rhw) * vp.z + vp.x + debug_offset;
@@ -69,7 +69,7 @@ void main(void)
             vec3(0.0), vec3(0.0), vec3(0.0));
 
 #if ENABLE_VERTEX_LIGHTING
-    const int lights_index = int(light_offset_.x);
+    int lights_index = int(light_offset_.x);
     VertexLight = calc_light(lights_index, Normal, base_light);
 #else
     VertexLight = base_light;

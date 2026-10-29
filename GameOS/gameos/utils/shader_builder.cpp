@@ -1,7 +1,7 @@
 #ifdef PLATFORM_WINDOWS
 #include <windows.h>
 #endif
-#include <GL/glew.h>
+#include "utils/graphics.h"
 #include <assert.h>
 #include <stdio.h>
 #include <cstring>

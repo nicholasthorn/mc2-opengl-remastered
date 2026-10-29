@@ -43,13 +43,13 @@ vec3 get_base_light(
     // bgra ecause we compare with hexadecimals which are in this format (see tgl.cpp)
     uint start_v_light = b | (g<<8) | (r<<16) | (a<<24);
 #if 0
-    if(start_v_light == 0xffffff6f)
+    if(start_v_light == 0xffffff6fu)
         return vec3(0,0,1);
     else
         return vec3(1,0,0);
 #endif
 
-    if (start_v_light == 0xffff00ff)			//Hot Pink -- Lit Windows -- ONLY at NIGHT
+    if (start_v_light == 0xffff00ffu)			//Hot Pink -- Lit Windows -- ONLY at NIGHT
     {
         if (isNight)
         {
@@ -61,10 +61,10 @@ vec3 get_base_light(
         }
         else		//Its not night, paint windows dark grey
         {
-            final = vec3(0x2f/255.0);
+            final = vec3(float(0x2f)/255.0);
         }
     }
-    else if (start_v_light == 0xffffff00)		//Hot Yellow -- Outside Building Lights -- ONLY at NIGHT
+    else if (start_v_light == 0xffffff00u)		//Hot Yellow -- Outside Building Lights -- ONLY at NIGHT
     {
         if (nightFactor >= 0.75)
         {
@@ -78,7 +78,7 @@ vec3 get_base_light(
             }
         }
     }
-    else if (start_v_light == 0xff00ff00)		//Hot Green -- Building Base Lights -- ONLY at NIGHT
+    else if (start_v_light == 0xff00ff00u)		//Hot Green -- Building Base Lights -- ONLY at NIGHT
     {
         if (isNight)
         {
@@ -89,15 +89,15 @@ vec3 get_base_light(
             final = hotGreenRGB * nightFactor;
         }
     }
-    else if (start_v_light == 0xffff0000)		//Hot Red -- Blink this light.
+    else if (start_v_light == 0xffff0000u)		//Hot Red -- Blink this light.
     {
 
     }
-    else if (start_v_light == 0xff0000ff)		//Hot Blue -- Blink this light.
+    else if (start_v_light == 0xff0000ffu)		//Hot Blue -- Blink this light.
     {
 
     }
-    else if ((start_v_light & 0x00ffffff)!=0)		//Some other kind of light, just add it in.
+    else if ((start_v_light & 0x00ffffffu)!=0u)		//Some other kind of light, just add it in.
     {
         if (!lightsOut)
         {

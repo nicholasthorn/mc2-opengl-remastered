@@ -3,7 +3,7 @@
 #endif
 #include <cassert>
 #include <cstring>
-#include <GL/glew.h>
+#include "utils/graphics.h"
 #include "utils/shader_builder.h"
 #include "utils/gl_utils.h"
 #include "utils/vec.h"
@@ -44,7 +44,7 @@ const GLint textureFormats[TF_COUNT] = {
     GL_RGB,
     GL_RGBA,
 
-    GL_R,
+    GL_RED, // was GL_R, which is a texgen coordinate, not a pixel format
     GL_RG,
     GL_RGB,
     GL_RGBA,
@@ -299,11 +299,28 @@ void getTextureData(const Texture& t, int lod, unsigned char* poutdata, TexForma
     glBindTexture(GL_TEXTURE_2D, t.id);
     GLenum fmt = (format == TF_COUNT) ? textureFormats[t.fmt_] : textureFormats[format];
     GLenum ch_type = textureFormatChannelType[t.fmt_];
+#ifdef MC2_GLES
+    // no glGetTexImage in ES: attach the level to a scratch FBO and read it back
+    glBindTexture(GL_TEXTURE_2D, 0);
+    GLint prev_fbo = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prev_fbo);
+    GLuint fbo = 0;
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.id, lod);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, t.w >> lod, t.h >> lod, fmt, ch_type, poutdata);
+    CHECK_GL_ERROR
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, prev_fbo);
+    glDeleteFramebuffers(1, &fbo);
+#else
     glGetTexImage(GL_TEXTURE_2D, lod, fmt, ch_type, poutdata);
     CHECK_GL_ERROR
     glBindTexture(GL_TEXTURE_2D, 0);
+#endif
 }
 
+#ifndef MC2_GLES // immediate-mode debug helpers, desktop compatibility profile only
 void draw_quad(float x0, float y0, float x1, float y1)
 {
 	glBegin(GL_QUADS);
@@ -322,6 +339,7 @@ void draw_quad(float x0, float y0, float x1, float y1)
 
 	glEnd();
 }
+#endif // MC2_GLES
 
 
 void applyTexture(glsl_program* program, int unit, const char* name, GLuint texid)
@@ -350,6 +368,7 @@ void applyPBO(glsl_program* program, int unit, const char* name, const Texture p
 	}
 }
 
+#ifndef MC2_GLES
 void draw_in_2d(int w, int h, render_func_t prenderfunc, void* puserdata)
 {
 	glViewport(0, 0, w, h);
@@ -370,6 +389,7 @@ void draw_in_2d(int w, int h, render_func_t prenderfunc, void* puserdata)
 	glPopMatrix();
 	glMatrixMode(GL_MODELVIEW);
 }
+#endif // MC2_GLES
 
 
 GLuint makeBuffer(GLenum target, const GLvoid* buffer_data, GLsizei buffer_size, GLenum type)
@@ -414,6 +434,7 @@ void updateBuffer(GLuint buf, GLenum target, const GLvoid* buffer_data, GLsizei 
 ///////////////////////////////////////////////////////////////////////////////
 // draw a textured cube with GL_TRIANGLES
 ///////////////////////////////////////////////////////////////////////////////
+#ifndef MC2_GLES
 void draw_textured_cube(GLuint textureId)
 {
 	glEnable(GL_TEXTURE_2D);
@@ -491,6 +512,7 @@ void draw_textured_cube(GLuint textureId)
 	if(textureId)
 		glBindTexture(GL_TEXTURE_2D, 0);
 }
+#endif // MC2_GLES
 
 
 Texture load_texture_from_file(const char* texName)

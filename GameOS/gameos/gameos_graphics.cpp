@@ -31,6 +31,10 @@ static const DWORD INVALID_TEXTURE_ID = 0;
 
 static gosRenderer* g_gos_renderer = NULL;
 
+// #version line (plus extensions / default precisions) prepended to every
+// shader; picked in gos_CreateRenderer() from the context's GLSL version.
+static std::string g_shader_header = "#version 420\n";
+
 gosRenderer* gos_GetRenderer() {
     return g_gos_renderer;
 }
@@ -168,7 +172,7 @@ class gosMaterialVariationHelper {
 
         void getMaterialVariation(gosMaterialVariation& variation)
         {
-            std::string defines_str = "#version 420\n";
+            std::string defines_str = g_shader_header;
             std::string unique_suffix_str = "#";
             for(auto d : defines)
             {
@@ -2180,6 +2184,8 @@ HGOSWINDOW gos_GetWindow() {
     return g_win_h;
 }
 
+// GL debug output is core in desktop GL 4.3 but only an extension on GLES 3.1
+#ifndef MC2_GLES
 static const char* getStringForType(GLenum type)
 {
 	switch (type)
@@ -2240,18 +2246,61 @@ static void GLAPIENTRY OpenGLDebugLog(GLenum source, GLenum type, GLuint id, GLe
 		printf("Message : %s\n", message);
 	}
 }
+#endif // MC2_GLES
 
+// Builds the header (#version, extensions, default precisions) prepended to
+// every shader, from the GLSL version the current context reports.
+static bool buildShaderHeader(const char* glsl_version)
+{
+#ifdef MC2_GLES
+    // "OpenGL ES GLSL ES 3.10 ..."; layout(binding=) on uniform blocks needs 3.10
+    int glsl_maj = 0, glsl_min = 0;
+    const char* num = glsl_version ? strpbrk(glsl_version, "0123456789") : nullptr;
+    if(!num || sscanf(num, "%d.%d", &glsl_maj, &glsl_min) != 2 || glsl_maj*100 + glsl_min < 310) {
+        SPEW(("GRAPHICS", "Minimum required GLSL version is 3.10 ES, current: %s\n", glsl_version));
+        return false;
+    }
+    g_shader_header =
+        "#version 310 es\n"
+        "precision highp float;\n"
+        "precision highp int;\n"
+        "precision highp sampler2DArray;\n"
+        "precision highp sampler3D;\n"
+        "precision highp sampler2DShadow;\n";
+#else
+    int glsl_maj = 0, glsl_min = 0;
+    sscanf(glsl_version, "%d.%d", &glsl_maj, &glsl_min);
+    const int ver = glsl_maj*100 + glsl_min;
+    if(ver >= 420) {
+        g_shader_header = "#version 420\n";
+    } else if(ver >= 330 && glewIsSupported("GL_ARB_shading_language_420pack")) {
+        // e.g. WSLg's D3D12 driver (GL 4.1): 420pack provides layout(binding=)
+        char buf[64];
+        snprintf(buf, sizeof(buf), "#version %d\n", ver);
+        g_shader_header = buf;
+        g_shader_header += "#extension GL_ARB_shading_language_420pack : require\n";
+    } else {
+        SPEW(("GRAPHICS", "Need GLSL 4.20 or GL_ARB_shading_language_420pack, current: %s\n", glsl_version));
+        return false;
+    }
+#endif
+    SPEW(("GRAPHICS", "Shader header: %s\n", g_shader_header.c_str()));
+    return true;
+}
 
 bool gos_CreateRenderer(HGOSWINDOW win, int w, int h) {
 
     gosASSERT(win);
 
     graphics::RenderContextHandle ctx = graphics::init_render_context(win);
-    if(!ctx) 
+    if(!ctx)
         return false;
 
     graphics::make_current_context(ctx);
 
+#ifdef MC2_GLES
+    SPEW(("GRAPHICS", "Status: Using OpenGL ES %s\n", (const char*)glGetString(GL_VERSION)));
+#else
     GLenum err = glewInit();
     if (GLEW_OK != err)
     {
@@ -2276,22 +2325,13 @@ bool gos_CreateRenderer(HGOSWINDOW win, int w, int h) {
         SPEW(("GRAPHICS", "Minimum required OpenGL version is 3.0\n"));
         return false;
     }
+#endif // MC2_GLES
 
     const char* glsl_version = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
     SPEW(("GRAPHICS", "GLSL version supported: %s\n", glsl_version));
 
-    int glsl_maj = 0, glsl_min = 0;
-    sscanf(glsl_version, "%d.%d", &glsl_maj, &glsl_min);
-
-    if(glsl_maj < 3 || (glsl_maj==3 && glsl_min < 30) ) {
-        SPEW(("GRAPHICS", "Minimum required OpenGL version is 330 ES, current: %d.%d\n", glsl_maj, glsl_min));
+    if(!buildShaderHeader(glsl_version))
         return false;
-    }
-
-    char version[16] = {0};
-    snprintf(version, sizeof(version), "%d%d", glsl_maj, glsl_min);
-    SPEW(("GRAPHICS", "Using %s shader version\n", version));
-
 
     g_gos_renderer = new gosRenderer(ctx, win, w, h);
     g_gos_renderer->init();
