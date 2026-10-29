@@ -584,9 +584,38 @@ GroundVehiclePtr GameObjectManager::newVehicle (void) {
 
 //---------------------------------------------------------------------------
 
+// WATCHID-LOAD-GUARD-1: rate-limited diagnostic for invalid watch data read
+// from an untrusted/corrupt/cross-version save. Emits a one-time stderr line.
+static void mc2_watchidLoadDiag(const char* what, long a, long b)
+{
+	static unsigned long s_loadDrops = 0;
+	++s_loadDrops;
+	if (s_loadDrops == 1)
+		fprintf(stderr, "[WATCHID_LOAD] invalid watch data on load (%s a=%ld b=%ld); "
+			"slot invalidated. Further occurrences suppressed.\n", what, a, b);
+}
+
+//---------------------------------------------------------------------------
+
 void GameObjectManager::setWatchID (GameObjectPtr obj) {
 
 	if (obj->watchID == 0) {
+		// OBJMGR-WATCHID-BOUNDS-1: watchList is sized getMaxObjects()+1 at
+		// allocation and getMaxObjects() never grows after load, so valid
+		// indices are [0, getMaxObjects()]. On watch-ID exhaustion (long
+		// reinforcement churn burns a fresh slot per re-acquire) fail safe:
+		// leave the object un-watchable (watchID stays 0) instead of writing
+		// OOB. Reuse is deliberately avoided — it would reintroduce ABA /
+		// stale-target hazards. The Save-side clamp is independent (see ::Save).
+		if (nextWatchID > (unsigned long)getMaxObjects()) {
+			static unsigned long s_watchIdDrops = 0;
+			++s_watchIdDrops;
+			if (s_watchIdDrops == 1)
+				fprintf(stderr, "[WATCHID_BOUND] watch-ID space exhausted "
+					"(cap=%ld); object left un-watchable. Further drops suppressed.\n",
+					getMaxObjects());
+			return;
+		}
 		watchList[nextWatchID] = obj;
 		obj->watchID = nextWatchID++;
 	}
@@ -836,7 +865,7 @@ void GameObjectManager::countTerrainObjects (PacketFile* terrainFile, long first
 		tileCol -= blockI * 20;
 		tileRow -= blockJ * 20;
 		
-		data->vertexNumber = tileRow * 20 + tileRow;
+		data->vertexNumber = tileRow * 20 + tileCol;
 		countObject(data);
 		
 		data++;
@@ -2739,7 +2768,14 @@ WeaponBoltPtr GameObjectManager::createWeaponBolt (long effectId)
 		ObjectTypeNumber weaponBoltObjTypeHandle = weaponEffects->GetEffectObjNum(effectId);
 		ObjectTypePtr objectType = getObjectType(weaponBoltObjTypeHandle);
 		if (!objectType)
+		{
 			STOP(("Object Type for a weapon Bolt was NULL.  EffectId: %d  ObjType: %d",effectId, weaponBoltObjTypeHandle));
+			// STOP is a no-op in RelWithDebInfo, so guard the null-deref below
+			// explicitly: drop the effect (caller handles a NULL weaponFX) instead
+			// of crashing on objectType->getObjectClass() when an effect type has
+			// no registered WEAPONBOLT object (e.g. asset gap on a given map).
+			return(NULL);
+		}
 		if (objectType->getObjectClass() != WEAPONBOLT)
 			return(NULL);
 		//ALWAYS CALL IN THIS ORDER OR NO EFFECT!!!!!!!!!!!!!!!!!!!!
@@ -2974,7 +3010,21 @@ void GameObjectManager::CopyFrom (ObjectManagerData *data)
 	maxVehicles         =    data->maxVehicles;
 	numMechs            =    data->numMechs;
 	numVehicles         =    data->numVehicles;
-	nextWatchID			=	 data->nextWatchId;
+
+	// WATCHID-LOAD-GUARD-1: nextWatchId is untrusted on-disk data. getByWatchID()
+	// reads watchList[watchID] for watchID < nextWatchID, and watchList is sized
+	// getMaxObjects()+1 (allocated in Load right after this), so a corrupt or
+	// cross-version nextWatchId would let a later getByWatchID() index out of
+	// bounds. Clamp to the allocation. The count fields above are already applied,
+	// so getMaxObjects() reflects the loaded scene. Never trust the serialized
+	// value blindly (mirrors the Save-side clamp in OBJMGR-WATCHID-BOUNDS-1).
+	const long _cap = getMaxObjects() + 1;
+	if (data->nextWatchId < 0 || (long)data->nextWatchId > _cap) {
+		mc2_watchidLoadDiag("nextWatchId", (long)data->nextWatchId, _cap);
+		nextWatchID = (data->nextWatchId < 0) ? 1 : (unsigned long)_cap;
+	} else {
+		nextWatchID = data->nextWatchId;
+	}
 }
 
 //-------------------------------------------------------------------
@@ -3000,7 +3050,14 @@ long GameObjectManager::Save (PacketFilePtr file, long packetNum)
 			// If none, let it be.  It'll be zero already
 			// DO NOT CALL getWatchID!!!!!!!
 			// That will assign them to objects which don't have them!!!!
-			for (long j=0;j<=nextWatchID;j++)
+			// OBJMGR-WATCHID-BOUNDS-1: clamp independently of setWatchID —
+			// watchList and watchSave are both sized getMaxObjects()+1, so j must
+			// not exceed getMaxObjects(). Previously j<=nextWatchID could read
+			// watchList[j] / write watchSave[j] one past the allocation
+			// (nextWatchID can legitimately equal getMaxObjects()+1).
+			const long _watchHi = ((long)nextWatchID < getMaxObjects())
+				? (long)nextWatchID : getMaxObjects();
+			for (long j=0;j<=_watchHi;j++)
 			{
 				if (watchList[j] == objList[i])
 				{
@@ -3619,9 +3676,24 @@ long GameObjectManager::Load (PacketFilePtr file, long packetNum)
 	// If none, let it be.  It'll be zero already
 	// DO NOT CALL getWatchID!!!!!!!
 	// That will assign them to objects which don't have them!!!!
-	for (int j=0;j<getMaxObjects();j++)
+	// WATCHID-LOAD-GUARD-1: watchSave[] is untrusted on-disk data. A corrupt or
+	// cross-version save can hold an index outside [0, maxObj]; objList is sized
+	// maxObj+1. Validate each entry before dereferencing objList. On an invalid
+	// index, invalidate that watch slot (treat the saved object reference as
+	// gone) and continue — never OOB-read objList, never crash the load. Loop is
+	// bounded by the allocated capacity (getMaxObjects()), not any serialized
+	// value.
+	const long _maxObj = getMaxObjects();
+	for (int j=0;j<_maxObj;j++)
 	{
-		watchList[j] = objList[watchSave[j]];
+		const int32_t _idx = watchSave[j];
+		if (_idx < 0 || (long)_idx > _maxObj)
+		{
+			watchList[j] = NULL;
+			mc2_watchidLoadDiag("watchSave", (long)_idx, _maxObj);
+			continue;
+		}
+		watchList[j] = objList[_idx];
 	}
 
 	free(watchSave);

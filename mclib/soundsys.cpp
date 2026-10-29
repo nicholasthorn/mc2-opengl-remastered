@@ -446,9 +446,10 @@ void SoundSystem::update (void)
 			gosAudio_DestroyResource(&bettyHandle);
 			soundHeap->Free(bettySoundBite);
 			bettySoundBite = NULL;
+			bettyHandle = NULL;
 		}
 	}
-	
+
 	if (useSound && supportSoundBite)
 	{
 		//---------------------------------------------------
