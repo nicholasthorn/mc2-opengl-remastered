@@ -3,6 +3,7 @@
 #endif
 #include <cassert>
 #include <cstring>
+#include <vector>
 #include "utils/graphics.h"
 #include "utils/shader_builder.h"
 #include "utils/gl_utils.h"
@@ -267,8 +268,30 @@ void updateTexture(const Texture& t, void* pdata, TexFormat pdata_format/*= TF_C
 	    //glTexImage2D(GL_TEXTURE_2D, 0, int_fmt, t.w, t.h, 0, fmt, ch_type, pdata);
         
 	    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, t.w, t.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pdata);
+#ifdef MC2_GLES
+        // ES won't convert between channel counts on upload (desktop GL does),
+        // e.g. RGBA8 data from Lock()/Unlock() into an RGB8 texture: repack.
+        std::vector<uint8_t> repacked;
+        if(pdata_format != TF_COUNT && pdata_format != t.fmt_ &&
+           pdata_format <= TF_RGBA8 && t.fmt_ <= TF_RGBA8) {
+            const int src_n = textureFormatNumChannels[pdata_format];
+            const int dst_n = textureFormatNumChannels[t.fmt_];
+            const uint8_t* src = (const uint8_t*)pdata;
+            repacked.resize((size_t)t.w * t.h * dst_n);
+            for(size_t i = 0; i < (size_t)t.w * t.h; ++i)
+                for(int c = 0; c < dst_n; ++c)
+                    repacked[i*dst_n + c] = c < src_n ? src[i*src_n + c] : 0xff;
+            pdata = repacked.data();
+            fmt = textureFormats[t.fmt_];
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        }
+#endif
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, t.w, t.h, fmt, ch_type, pdata);
 		CHECK_GL_ERROR
+#ifdef MC2_GLES
+        if(!repacked.empty())
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+#endif
 		//glGenerateMipmap(GL_TEXTURE_2D);
     } else {
         // deprecated
